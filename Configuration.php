@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Matomo - free/libre analytics platform
  *
@@ -69,29 +68,41 @@ class Configuration
     /**
      * @return array
      */
-    public function getIpRangesAlwaysAllowed()
-    {
-        $value = $this->getConfigValue(self::KEY_RANGE_ALLOW_LIST, self::DEFAULT_RANGE_ALLOW_LIST);
+    public function getIpRangesAlwaysAllowed(): array
+	{
+		$settings = new \Piwik\Plugins\TrackingSpamPrevention\SystemSettings();
+		$raw      = $this->settingToCidrs($settings->iprange_allowlist);
 
-        if (empty($value) || !is_array($value)) {
-            $value = self::DEFAULT_RANGE_ALLOW_LIST;
-        }
+		$normalized = array_map(static function ($r) {
+			$r = trim((string) $r);
+			if ($r === '') {
+				return '';
+			}
+			if (strpos($r, '/') === false) {
+				return (strpos($r, ':') !== false) ? ($r . '/128') : ($r . '/32');
+			}
+			return $r;
+		}, $raw);
 
-        $value = array_values(array_filter($value));
-        $value = array_map(function ($range) {
-            if (strpos($range, '/') === false) {
-                // we assume user did not enter a range so we make it one that matches that one ip
-                if (strpos($range, '.') !== false) {
-                    $range .= '/32';
-                } elseif (strpos($range, ':') !== false) {
-                    $range .= '/128';
-                }
-            }
-            return $range;
-        }, $value);
+		return array_values(array_unique(array_filter($normalized, static fn($x) => $x !== '')));
+	}
 
-        return $value;
-    }
+	private function settingToCidrs(\Piwik\Settings\Setting $setting): array
+	{
+		$val = $setting->getValue();
+		if (empty($val) || !is_array($val)) {
+			return [];
+		}
+		$list = [];
+		foreach ($val as $row) {
+			if (is_array($row) && !empty($row['cidr'])) {
+				$list[] = trim((string) $row['cidr']);
+			} elseif (is_string($row)) {
+				$list[] = trim($row);
+			}
+		}
+		return array_values(array_filter($list, fn($v) => $v !== ''));
+	}
 
     private function getConfig()
     {
